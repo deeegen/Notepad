@@ -5,3 +5,4 @@
 - [ ] Fix the split view mode
 - [ ] Add markdown toolbar
 - [ ] Add tabs
+- [ ] Align line numbers with note text
