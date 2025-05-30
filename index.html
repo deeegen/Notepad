@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sigma notepad v0.0.1</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  --bg: #121212;
+  --fg: #f0f0f0;
+  --yellow: #ffd700;
+  --purple: #8a2be2;
+  --btn-bg: #444;
+  --btn-hover: #555;
+}
+body {
+  margin: 0;
+  font-family: 'Segoe UI',sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+header {
+  background: var(--purple);
+  color: var(--bg);
+  padding: 1rem;
+  text-align: center;
+  font-size: 1.5rem;
+}
+.toolbar {
+  display: flex;
+  gap: .5rem;
+  padding: .5rem;
+  background: #1e1e1e;
+  flex-wrap: wrap;
+}
+.toolbar button, .toolbar label {
+  background: var(--btn-bg);
+  border: none;
+  padding: .5rem;
+  color: var(--fg);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background .2s;
+}
+.toolbar button:hover, .toolbar label:hover {
+  background: var(--btn-hover);
+}
+.editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.editor-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+.gutter {
+  background: #1a1a1a;
+  padding: .5rem 0;
+  text-align: right;
+  user-select: none;
+}
+.gutter div {
+  padding: 0 .5rem;
+  font-family: monospace;
+  color: var(--yellow);
+}
+textarea {
+  flex: 1;
+  background: #1e1e1e;
+  border: none;
+  color: var(--fg);
+  font-family: monospace;
+  font-size: 1rem;
+  padding: .5rem;
+  resize: none;
+  outline: none;
+  line-height: 1.4;
+}
+#preview {
+  flex: 1;
+  background: #1e1e1e;
+  overflow-y: auto;
+  padding: .5rem;
+  display: none;
+}
+.split .editor-wrapper, .split #preview {
+  width: 50%;
+}
+.split .editor-wrapper, .split #preview {
+  display: block;
+}
+#preview.active {
+  display: block;
+}
+.info-bar {
+  padding: .5rem;
+  background: #1e1e1e;
+  display: flex;
+  justify-content: space-between;
+  font-size: .9rem;
+}
+.advanced-options {
+  background: #222;
+  padding: .5rem;
+  display: none;
+  flex-direction: column;
+  gap: .5rem;
+  overflow-y: auto;
+  max-height: 200px;
+}
+.advanced-options label {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+</style>
+</head>
+<body>
+<header>Pillas' Notepad</header>
+<div class="toolbar">
+  <button id="btnSave">Save</button>
+  <button id="btnToggleMarkdown">Toggle Markdown</button>
+  <button id="btnSplit">Split View</button>
+  <button id="btnPDF">Export PDF</button>
+  <button id="btnToggleToolbar">Toggle MD Toolbar</button>
+  <button id="btnAdvanced">Advanced Options</button>
+  <label>Load<input type="file" id="fileInput" style="display:none"></label>
+</div>
+<div class="editor-container" id="container">
+  <div class="editor-wrapper">
+    <div class="gutter" id="gutter"></div>
+    <textarea id="editor" placeholder="Start typing..."></textarea>
+  </div>
+  <div id="preview"></div>
+  <div class="info-bar" id="infoBar">
+    <div id="wc">Words: 0</div>
+    <div id="cc">Chars: 0</div>
+  </div>
+  <div class="advanced-options" id="opts">
+    <label><input type="checkbox" id="optAutoSave"> Autosave</label>
+    <label><input type="checkbox" id="optWordCount"> Word/Char Count</label>
+    <label><input type="checkbox" id="optSplit"> Split View</label>
+    <label><input type="checkbox" id="optPDF"> PDF Export</label>
+    <label><input type="checkbox" id="optMDToolbar"> Markdown Toolbar</label>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const editor=document.getElementById('editor'),gutter=document.getElementById('gutter'),preview=document.getElementById('preview'),infoBar=document.getElementById('infoBar'),container=document.getElementById('container');
+const btnSave=document.getElementById('btnSave'),btnToggleMarkdown=document.getElementById('btnToggleMarkdown'),btnSplit=document.getElementById('btnSplit'),btnPDF=document.getElementById('btnPDF'),btnToggleToolbar=document.getElementById('btnToggleToolbar'),btnAdvanced=document.getElementById('btnAdvanced'),fileInput=document.getElementById('fileInput');
+const optAutoSave=document.getElementById('optAutoSave'),optWordCount=document.getElementById('optWordCount'),optSplit=document.getElementById('optSplit'),optPDF=document.getElementById('optPDF'),optMDToolbar=document.getElementById('optMDToolbar');
+const wc=document.getElementById('wc'),cc=document.getElementById('cc'),opts=document.getElementById('opts');
+let markdown=false;
+function updateGutter(){
+  const lines=editor.value.split('\n').length;
+  gutter.innerHTML=Array.from({length:lines},(_,i)=>`<div>${i+1}</div>`).join('');
+}
+function updateCount(){
+  const text=editor.value;
+  wc.textContent='Words: '+(text.trim()?text.trim().split(/\s+/).length:0);
+  cc.textContent='Chars: '+text.length;
+}
+function saveOpts(){
+  localStorage.setItem('opts',JSON.stringify({
+    auto:optAutoSave.checked,
+    wc:optWordCount.checked,
+    split:optSplit.checked,
+    pdf:optPDF.checked,
+    mdbar:optMDToolbar.checked
+  }));
+  applyOpts();
+}
+function loadOpts(){
+  const o=JSON.parse(localStorage.getItem('opts')||'{}');
+  optAutoSave.checked=o.auto;optWordCount.checked=o.wc;optSplit.checked=o.split;optPDF.checked=o.pdf;optMDToolbar.checked=o.mdbar;
+}
+function applyOpts(){
+  infoBar.style.display=optWordCount.checked?'flex':'none';
+  btnSplit.style.display=optSplit.checked?'inline-block':'none';
+  btnPDF.style.display=optPDF.checked?'inline-block':'none';
+  btnToggleToolbar.style.display=optMDToolbar.checked?'inline-block':'none';
+}
+optAutoSave.addEventListener('change',saveOpts);
+optWordCount.addEventListener('change',saveOpts);
+optSplit.addEventListener('change',saveOpts);
+optPDF.addEventListener('change',saveOpts);
+optMDToolbar.addEventListener('change',saveOpts);
+btnAdvanced.addEventListener('click',()=>opts.style.display=opts.style.display==='flex'?'none':'flex');
+editor.addEventListener('input',()=>{
+  updateGutter();
+  if(markdown)preview.innerHTML=marked.parse(editor.value);
+  if(optWordCount.checked)updateCount();
+  if(optAutoSave.checked)localStorage.setItem('content',editor.value);
+});
+editor.addEventListener('scroll',()=>gutter.scrollTop=editor.scrollTop);
+btnSave.addEventListener('click',()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([editor.value],{type:'text/plain'}));
+  a.download='note.txt';a.click();
+});
+btnToggleMarkdown.addEventListener('click',()=>{
+  markdown=!markdown;
+  preview.innerHTML=marked.parse(editor.value);
+  editor.style.display=markdown?'none':'block';
+  preview.style.display=markdown?'block':'none';
+});
+btnSplit.addEventListener('click',()=>{
+  container.classList.toggle('split');
+  editor.style.display='block';preview.style.display='block';markdown=true;preview.innerHTML=marked.parse(editor.value);
+});
+btnPDF.addEventListener('click',()=>{
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF();
+  doc.text(editor.value,10,10);
+  doc.save('note.pdf');
+});
+fileInput.addEventListener('change',e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{editor.value=e.target.result;updateGutter();if(optWordCount.checked)updateCount();if(markdown)preview.innerHTML=marked.parse(editor.value)};
+  r.readAsText(f);
+});
+window.addEventListener('load',()=>{
+  loadOpts();
+  applyOpts();
+  editor.value=localStorage.getItem('content')||'';
+  updateGutter();
+  if(optWordCount.checked)updateCount();
+});
+</script>
+</body>
+</html>
